@@ -14,6 +14,7 @@ normative technical details.
 ## Table of Contents
 
 - [History](#history)
+- [Value proposition](#value-proposition)
 - [Motivation](#motivation)
 - [Design Goals](#design-goals)
 - [Representations](#representations)
@@ -33,13 +34,30 @@ associating those declarations with application endpoints. As a result, the
 xRegistry (extensible registry) specification was created.
 
 xRegistry was initially part of CloudEvents, called "CloudEvents Discovery" but
-later moved into it's own repository.
+later moved into its own repository.
 
 ## Value proposition
 
-xRegistry provides a specification to define metadata, schemas and extensions
-for resources in an abstract model that is independent of any specific
-registry-, protocol- or schema implementation.
+xRegistry provides a specification to define metadata and extensions for
+resources in an abstract model that can be used to centralize and standardize
+information about resources in a system. The core specification defines the
+basic building blocks for managing metadata about resources and provides
+multiple formats to [represent](#representations) this information.
+
+xRegistry can be used to represent any type of metadata, as long as it adheres
+to the basic model in which a registry consists of groups, which in turn
+consists of multiple resources which can have multiple versions defined. This
+model is useful for any metadata that is crucial to the operation of a system or
+helps facilitate the interaction between systems. The use cases for xRegistry
+are therefore very broad. See
+[possible use cases](#possible-use-cases) for more examples.
+
+In addition to the core specification, xRegistry provides secondary
+specifications for [endpoints](/endpoint), [schemas](/schema), and
+[messages](/message), that further build upon the core to provide more
+domain-specific standardization in the context of event-driven systems. The
+following subsections provide a more specific overview of how xRegistry can be 
+used to address common challenges in the event-driven space.
 
 ### Discovery
 
