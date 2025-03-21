@@ -117,7 +117,6 @@ For easy reference, the JSON serialization of a Registry adheres to this form:
   "modifiedat": "TIMESTAMP",
 
   "capabilities": {                     # Supported capabilities/options
-    "enforcecompatibility": BOOLEAN, ?
     "flags": [                          # Query parameters
       "doc",? "epoch",? "filter",? "inline",?  "nodefaultversionid",?
       "nodefaultversionsticky",? "noepoch",?  "noreadonly",?  "offered",?
@@ -183,6 +182,7 @@ For easy reference, the JSON serialization of a Registry adheres to this form:
             "setversionid": BOOLEAN, ?  # vid settable? Default=true
             "setdefaultversionsticky": BOOLEAN, ? # sticky settable? Default=true
             "hasdocument": BOOLEAN, ?     # Has separate document. Default=true
+            "singleversionroot": BOOLEAN, ? # Default=false"
             "typemap": MAP, ?             # contenttype mappings
             "labels": { "STRING": "STRING" * }, ?
             "attributes": { ... }, ?      # Version attributes/extensions
@@ -247,6 +247,7 @@ For easy reference, the JSON serialization of a Registry adheres to this form:
             "modifiedat": "TIMESTAMP",             # Resource's
             "readonly": BOOLEAN,                   # Default=false
             "compatibility": "STRING",             # Default=none
+            "enforcecompatibility": BOOLEAN,       # Default=false
 
             "defaultversionid": "STRING",
             "defaultversionurl": "URL",
@@ -1905,7 +1906,6 @@ be of the form:
 
 ```
 {
-  "enforcecompatibility": BOOLEAN, ?
   "flags": [ "STRING" * ], ?
   "mutable": [ "STRING" * ], ?
   "pagination": BOOLEAN, ?
@@ -1939,27 +1939,6 @@ Absence, presence, or configuration values of a feature in the map MAY vary
 based on the authorization level of the client making the request.
 
 The following defines the specification-defined capabilities:
-
-#### `enforcecompatibility`
-- Name: `enforcecompatibility`
-- Type: Boolean
-- Description: Indicates whether the server will enforce the `compatibility`
-  value defined by the owning Resource. When set to `true` the server MUST
-  generate an error as a result of any attempt to create/update a Resource
-  (or its Versions) that would result in those entities violating the stated
-  compatibility rules.
-
-  This includes the server rejecting requests to update the `compatibility`
-  attribute's value if any of the Resource's Versions would violate the
-  compatibility rules.
-
-  A value of `false` indicates that the server MUST NOT perform any
-  compatibility checking.
-
-  Attempts to change this value from `false` to `true` MUST fail if doing so
-  would result in any existing Version violating the `compatibility` rules
-  defined for the owning Resource.
-- When not specified, the default value MUST be `false`.
 
 #### `flags`
 - Name: `flags`
@@ -2154,10 +2133,6 @@ For example:
 GET /capabilities?offered
 
 {
-  "enforcecompatibility": {
-    "type": "boolean",
-    "enum": [ false, true ]
-  },
   "flags": {
     "type": "string",
     "enum": [ "doc", "epoch", "filter", "inline", "nodefaultversionid",
@@ -2343,6 +2318,7 @@ Regardless of how the model is retrieved, the overall format is as follows:
           "setversionid": BOOLEAN, ?   # vid settable? Default=true
           "setdefaultversionsticky": BOOLEAN, ? # sticky settable? Default=true
           "hasdocument": BOOLEAN, ?     # Has separate document. Default=true
+          "singleversionroot": BOOLEAN, ? # enforce single root. Default=false
           "typemap": MAP, ?             # contenttype mappings
           "labels": { "STRING": "STRING" * }, ?
           "attributes": { ... }, ?      # Version attributes/extensions
@@ -2698,11 +2674,18 @@ The following describes the attributes of Registry model:
     it is valid for an implementation to only support one (`1`) Version when
     `maxversions` is set to `0`.
   - When the limit is exceeded, implementations MUST prune Versions by
-    deleting the oldest Version (based on creation times) first, skipping the
-    Version marked as "default". An exception to this pruning rule is if
-    `maxversions` value is one (`1`) then the newest Version of the Resource
-    MUST always be the "default" and the `setdefaultversionsticky` aspect
-    MUST be `false`.
+    deleting the oldest Version first, skipping the
+    Version marked as "default". The strategy for finding the oldest Version
+    to delete is as follows:
+    1. Find all Versions that are roots (i.e. `ancestor` is the same as its
+       `versionid`)
+    1. If many exist, find the Version with the oldest `createdat` date
+    1. If many exist, find the lowest Version according to alphabetical order
+       of the `versionid` attribute
+    Once the single oldest Version is determined, delete it.
+    An exception to this pruning rule is if `maxversions` value is one (`1`)
+    then the newest Version of the Resource MUST always be the "default" and
+    the `setdefaultversionsticky` aspect MUST be `false`.
 
 - `groups.resources.setversionid`
   - Type: Boolean (`true` or `false`, case sensitive).
@@ -2748,6 +2731,20 @@ The following describes the attributes of Registry model:
   - When not specified, the default value MUST be `true`.
   - A value of `true` indicates that Resource of this type supports a separate
     document to be associated with it.
+
+- `groups.resources.singleversionroot`
+    - Type: Boolean (`true` or `false`, case-sensitive).
+    - OPTIONAL.
+    - Indicates whether Resources of this type can have multiple Versions
+      that represent roots of an ancestor tree, as indicated by the
+      Version's `ancestor` attribute value being the same as its `versionid`
+      attribute.
+    - When not specified, the default value MUST be `false`.
+    - A value of `true` indicates that only one Version of the Resource can
+      be a root. This is useful to avoid creating multiple roots. When this
+      attribute is set to `true`, the server MUST generate an error if any
+      request results in a state where more than one Version of a Resource
+      is a root of an ancestor tree.
 
 - `groups.resources.typemap`
   - Type: Map where the keys and values MUST be non-empty strings. The key
@@ -2945,6 +2942,7 @@ Content-Type: application/json; charset=utf-8
           "setversionid": BOOLEAN, ?
           "setdefaultversionsticky": BOOLEAN, ?
           "hasdocument": BOOLEAN, ?
+          "singleversionroot": BOOLEAN, ?
           "typemap": MAP, ?
           "labels": { "STRING": "STRING" * }, ?
           "attributes": { ... }, ?
@@ -3067,6 +3065,7 @@ Content-Type: application/json; charset=utf-8
           "setversionid": BOOLEAN, ?
           "setdefaultversionsticky": BOOLEAN, ?
           "hasdocument": BOOLEAN, ?
+          "singleversionroot": BOOLEAN, ?
           "typemap": MAP, ?
           "labels": { "STRING": "STRING" * }, ?
           "attributes": { ... }, ?           # Version attributes/extensions
@@ -3136,6 +3135,7 @@ Content-Type: application/json; charset=utf-8
           "setversionid": BOOLEAN, ?
           "setdefaultversionsticky": BOOLEAN, ?
           "hasdocument": BOOLEAN, ?
+          "singleversionroot": BOOLEAN, ?
           "typemap": MAP, ?
           "labels": { "STRING": "STRING" * }, ?
           "attributes": { ... }, ?
@@ -3946,6 +3946,7 @@ Resource attribute MUST adhere to the following:
     "modifiedat": "TIMESTAMP",             # Resource's
     "readonly": BOOLEAN,                   # Default=false
     "compatibility": "STRING",             # Default=none
+    "enforcecompatibility": BOOLEAN,       # Default=false
 
     "defaultversionid": "STRING",
     "defaultversionurl": "URL",
@@ -4020,11 +4021,10 @@ and the following Resource level attributes:
 
 ##### `compatibility` Attribute
 - Type: String (with resource-specified enumeration of possible values)
-- Description: indicates whether Versions of this Resource need to adhere to
-  a certain compatibility rule. For example, a "backward" compatibility
-  value would indicate that all Versions of a Resource are mandated to be
-  backwards compatible with the next oldest Version, as determined by their
-  `createdat` timestamp attributes.
+- Description: States that Versions of this Resource adhere to a certain
+  compatibility rule. For example, a "backward" compatibility value would
+  indicate that all Versions of a Resource are backwards compatible with the
+  next oldest Version, as determined by their `ancestor` attributes.
 
   The exact meaning of what each `compatibility` value means might vary based
   on the data model of the Resource, therefore this specification only defines
@@ -4035,13 +4035,15 @@ and the following Resource level attributes:
   Implementations MUST include `none` as one of the possible values and when
   set to `none` then compatibility checking MUST NOT be performed.
 
-  If the `enforcecompatibility` capability is set to `true` then
+  If the `enforcecompatibility` attribute is set to `true` then
   implementations of this specification are REQUIRED to perform the proper
   compatibility checks to ensure that all Versions of a Resource adhere to the
-  rules defined by the current value of this attribute. This includes
-  generating an error in response to requests to add/delete/modify Versions or
-  update this attribute in such a way as to make the existing Versions
-  incompatible due to the new value.
+  rules defined by the current value of this attribute.
+  For `compatibility` strategies that require understanding the sequence in
+  which versions need to be compatible, the server MUST use the [`ancestor`]
+  (#ancestor-attribute) to determine the sequence of Versions. For Versions
+  that have the `ancestor` value set to its `versionid` attribute,
+  compatibility cannot be enforced.
 
   Note that, like all attributes, if a default value is defined as part of the
   model, then this attribute MUST be populated with that value if no value
@@ -4061,10 +4063,35 @@ and the following Resource level attributes:
 
 - Constraints:
   - REQUIRED.
-  - If present, it MUST be a case sensitive value from the model defined
+  - If present, it MUST be a case-sensitive value from the model-defined
     enumeration range.
   - When not specified, the default value MUST be `none`.
   - The enumeration range MUST include `none` as a valid value.
+  - The value MAY change only when the new `compatibility` value can be
+    enforced across all existing Versions. If that's not the case, the
+    server MUST generate an error.
+
+#### `enforcecompatibility`
+- Name: `enforcecompatibility`
+- Type: Boolean
+- Description: Indicates a request to the server to enforce the `compatibility`
+  value defined by the owning Resource.
+  When set to `true`:
+  1. The server MUST reject the request if the server cannot enforce the
+     compatibility for the data to be validated for the Resource's Versions.
+  1. The server MUST reject all attempts to create/update a Resource (or its
+     Versions) that would result in those entities violating the stated
+     compatibility statement.
+  1. The server MUST reject requests to update the `compatibility`
+     attribute value if any of the Resource's Versions would violate the
+     compatibility rules.
+
+  A value of `false` indicates that the server MUST NOT perform any
+  compatibility checking.
+
+  Attempts to change this value from `false` to `true` MUST result in
+  the validation of existing Versions.
+- When not specified, the default value MUST be `false`.
 
 ##### `defaultversionid` Attribute
 - Type: String
@@ -4404,6 +4431,7 @@ this form:
     "modifiedat": "TIMESTAMP",             # Resource's
     "readonly": BOOLEAN,                   # Default=false
     "compatibility": "STRING",             # Default=none
+    "enforcecompatibility": BOOLEAN,       # Default=false
 
     "defaultversionid": "STRING",
     "defaultversionurl": "URL",
@@ -4532,7 +4560,8 @@ then the resulting serialization of the source Resource would be:
     "createdat": "2024-01-01-T12:00:00",
     "modifiedat": "2024-01-01-T12:01:00",
     "readonly": false,
-    "compatibility": "none"
+    "compatibility": "none",
+    "enforcecompatibility": false
   },
   "versionscount": 1,
   "versionsurl": "http://example.com/schemagroups/group1/schemas/mySchema/versions"
@@ -4730,6 +4759,7 @@ Link: <URL>;rel=next;count=UINTEGER ?
       "modifiedat": "TIMESTAMP",             # Resource's
       "readonly": BOOLEAN,                   # Default=false
       "compatibility": "STRING",             # Default=none
+      "enforcecompatibility": BOOLEAN,       # Default=false
 
       "defaultversionid": "STRING",
       "defaultversionurl": "URL",
@@ -4916,6 +4946,7 @@ in the request MUST adhere to the following:
     "modifiedat": "TIMESTAMP",
     "readonly": BOOLEAN,
     "compatibility": "STRING",
+    "enforcecompatibility": BOOLEAN,
 
     "defaultversionid": "STRING",
     "defaultversionurl": "URL",
@@ -5276,6 +5307,7 @@ ETag: "UINTEGER"
     "modifiedat": "TIMESTAMP",
     "readonly": BOOLEAN,
     "compatibility": "STRING",
+    "enforcecompatibility": BOOLEAN,
 
     "defaultversionid": "STRING",
     "defaultversionurl": "URL",
@@ -5387,7 +5419,8 @@ When serialized as a JSON object, the Version entity adheres to this form:
 
   "RESOURCEurl": "URL", ?                  # If not local
   "RESOURCE": ... Resource document ..., ? # If inlined & JSON
-  "RESOURCEbase64": "STRING" ?             # If inlined & ~JSON
+  "RESOURCEbase64": "STRING", ?            # If inlined & ~JSON
+  "ancestor": "STRING"
 }
 ```
 
@@ -5427,6 +5460,8 @@ and the following Version level attributes:
 - [`RESOURCEurl`](#resourceurl-attribute) - OPTIONAL.
 - [`RESOURCE`](#resource-attribute) - OPTIONAL.
 - [`RESOURCEbase64`](#resourcebase64-attribute) - OPTIONAL.
+- [`ancestor`](#ancestor-attribute) - REQUIRED in API and document views.
+  OPTIONAL in requests.
 
 as defined below:
 
@@ -5545,6 +5580,37 @@ as defined below:
   - MUST NOT be present if `RESOURCE` is also present.
   - MUST NOT be present if the Resource's `hasdocument` model attribute is
     set to `false.
+
+##### `ancestor` Attribute
+- Type: String
+- Description: The `versionid` of this Version's ancestor.
+
+  The `ancestor` attribute MUST be set to any existing Version's `versionid`,
+  or to the `versionid` of the Version itself, to indicate that this Version
+  has no `ancestor`.
+
+  When creating a Version without explicitly setting the `ancestor`
+  attribute, the server MUST set the `ancestor` to the most recent Version's
+  `versionid` attribute, based on the `createdat` attribute. If multiple
+  exist, the lowest Version will be determined alphabetically. If no
+  Versions exist, the `ancestor` attribute MUST be set to the `versionid` of the
+  Version being created, making it a root.
+
+  If a write operation contains multiple Versions with the `ancestor` attribute
+  omitted, the server MUST order all Versions based on the `createdat`
+  attribute and then alphabetically. The first Version will have the most
+  recent Version's `versionid` as its `ancestor` as clarified above.
+
+  When deleting a Version, the server MUST update the `ancestor` attribute
+  of any Version that points to the deleted Version to point to itself,
+  making it a new root.
+
+- Constraints: the `ancestor` attribute MUST NOT be set to a value that
+  creates circular references between Versions. For example, an operation that
+  makes Version A's ancestor B, and Version B's ancestor A, MUST generate an
+  error.
+  Any attempt to set an `ancestor` attribute to a non-existing `versionid`
+  MUST generate an error.
 
 #### Version IDs
 
@@ -6296,6 +6362,7 @@ the following:
     "modifiedat": "TIMESTAMP",
     "readonly": BOOLEAN,
     "compatibility": "STRING",
+    "enforcecompatibility": BOOLEAN,
 
     "defaultversionid": "STRING",
     "defaultversionurl": "URL"

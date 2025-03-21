@@ -674,3 +674,40 @@ in the entity in order to be model compliant.
 
 Likewise, implementations of the server must validate the entire entity
 against the new model, not just a subset of the entity's attributes.
+
+# Why are `ancestor` attributes that point to themselves allowed?
+
+The [`ancestor` attribute](spec.md#ancestor-attribute) is used to build a
+hierarchy of Versions to facilitate compatibility checking when the
+[`compatibility` attribute](spec.md#compatibility-attribute) is set.
+Generally speaking, implementations are not expected to allow users to
+explicitly create multiple roots for a single Version. However, the
+specification does not mandate this as there may be cases where it is useful
+to allow for multiple roots. In some cases it may even be unavoidable, for
+example when the `maxversions` attribute (See `groups.resources.maxversions`
+under [Resource Model](spec.md#registry-model)) is set to a value that forces
+pruning of the Version tree. In such cases, when deleting the oldest version,
+this could result in a new root being created when there are multiple
+decedents of the deleted Version.
+
+# What's the oldest Version of a Resource?
+
+The oldest Version of a Resource isn't necessarily the one with the oldest
+`createdat` timestamp, because the `ancestor` attribute takes precedence
+over the `createdat` attribute. This is because the ancestor tree more
+accurately describes an ordered lineage of the Versions than timestamps.
+
+# What does the `enforcecompatibility` attribute guarantee?
+
+The `compatibility` attribute is a statement made by the authority managing the
+registry about the compatibility guarantees of the Resource. The authority
+is expected to guarantee the configured `compatibility`. The
+`enforcecompatibility` attribute represents a request to the server to
+enforce the compatibility when it is set to `true`. Any requests to enforce
+the compatibility when the server cannot perform compatibility checking will
+be refused. However, in cases where the registry is hosted on a file-server
+or blob storage, there is no real server that has the ability to validate
+such requests. In such cases, the `enforcecompatibility` attribute could be
+set to `true` while the server has no ability to enforce compatibility.
+It's recommended that, in such cases, the `enforcecompatibility` attribute
+is set to `false`, but there's no way to enforce it.
